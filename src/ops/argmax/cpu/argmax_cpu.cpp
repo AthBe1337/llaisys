@@ -28,6 +28,27 @@ void argmax_(int64_t *max_idx, T *max_val, const T *vals, size_t numel) {
 
         *max_val = llaisys::utils::cast<T>(result.first);
         *max_idx = result.second;
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+        using MaxPair = std::pair<int, int64_t>;
+
+        #pragma omp declare reduction(max_pair_int : MaxPair : \
+            omp_out = (omp_in.first > omp_out.first || \
+                      (omp_in.first == omp_out.first && omp_in.second < omp_out.second)) \
+                      ? omp_in : omp_out) \
+            initializer(omp_priv = MaxPair{std::numeric_limits<int>::lowest(), INT64_MAX})
+
+        MaxPair result{std::numeric_limits<int>::lowest(), INT64_MAX};
+
+        #pragma omp parallel for reduction(max_pair_int : result)
+        for (size_t i = 0; i < numel; ++i) {
+            int val = static_cast<int>(vals[i]);
+            if (val > result.first) {
+                result = {val, i};
+            }
+        }
+
+        *max_val = static_cast<T>(result.first);
+        *max_idx = result.second;
     } else {
         using MaxPair = std::pair<T, int64_t>;
 
