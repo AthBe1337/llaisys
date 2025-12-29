@@ -92,11 +92,7 @@ void rms_norm_(T *out, const T *in, const T *weight, float eps, size_t nrow, siz
                 float x_val = static_cast<float>(in_t[j]);
                 float res = x_val * w_val * scale;
 
-                float rounded = (res >= 0.0f) ? (res + 0.5f) : (res - 0.5f);
-                if (rounded > 127.0f) rounded = 127.0f;
-                if (rounded < -128.0f) rounded = -128.0f;
-
-                out_t[j] = static_cast<int8_t>(rounded);
+                out_t[j] = llaisys::utils::cast<int8_t>(res);
             }
         } else {
             T rms{}, square_sum{}, avg_square_sum{};

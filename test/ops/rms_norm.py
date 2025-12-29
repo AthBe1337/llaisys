@@ -20,7 +20,7 @@ def torch_rms_norm_int(ans, x, w, eps):
     x_high = x.to(torch.float32)
     w_high = w.to(torch.float32)
     
-    var = torch.pow(x_high, 2) 
+    var = torch.pow(x_high, 2)
     
     mean = torch.mean(var, dim=-1, keepdim=True)
     
@@ -31,6 +31,7 @@ def torch_rms_norm_int(ans, x, w, eps):
     
     if ans.dtype in [torch.int8, torch.uint8]:
         out_high = torch.round(out_high)
+        out_high = torch.clamp(out_high, -128, 127)
         
     ans.copy_(out_high.to(ans.dtype))
 
@@ -48,9 +49,9 @@ def test_op_rms_norm(
         w, w_ = random_tensor((shape[1],), dtype_name, device_name)
         c, c_ = random_tensor(shape, dtype_name, device_name)
     else:
-        x, x_ = random_int_tensor(shape, device_name, dtype_name)
-        w, w_ = random_int_tensor((shape[1],), device_name, dtype_name)
-        c, c_ = random_int_tensor(shape, device_name, dtype_name)
+        x, x_ = random_int_tensor(shape, device_name, dtype_name, low=-128, high=127)
+        w, w_ = random_int_tensor((shape[1],), device_name, dtype_name, low=-128, high=127)
+        c, c_ = random_int_tensor(shape, device_name, dtype_name, low=-128, high=127)
     eps = 1e-5
     if dtype_name not in ["i8"]:
         torch_rms_norm(c, x, w, eps)
