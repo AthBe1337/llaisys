@@ -350,6 +350,49 @@ void fp32_to_bf16_batch(bf16_t *dst, const float *src, size_t count) {
 #endif
 }
 
+void int8_to_fp32_batch(float* dst, const int8_t* src, size_t size) {
+    size_t i = 0;
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+    for (; i + 16 <= size; i += 16) {
+        __m128i v8 = _mm_loadu_si128((const __m128i*)(src + i));
+        __m512i v32 = _mm512_cvtepi8_epi32(v8);
+        __m512 f32 = _mm512_cvtepi32_ps(v32);
+        _mm512_storeu_ps(dst + i, f32);
+    }
+#elif defined(__AVX2__)
+    for (; i + 8 <= size; i += 8) {
+        __m128i v8 = _mm_loadu_si128((const __m128i*)(src + i));
+        __m256i v32 = _mm256_cvtepi8_epi32(v8);
+        __m256 f32 = _mm256_cvtepi32_ps(v32);
+        _mm256_storeu_ps(dst + i, f32);
+    }
+#endif
+    for (; i < size; ++i) dst[i] = static_cast<float>(src[i]);
+}
+
+void fp32_to_int8_batch(int8_t* dst, const float* src, size_t size) {
+    size_t i = 0;
+#if defined(__AVX512F__) && defined(__AVX512BW__)
+    for (; i + 16 <= size; i += 16) {
+        __m512 f32 = _mm512_loadu_ps(src + i);
+        __m512i v32 = _mm512_cvtps_epi32(f32);
+        _mm_storeu_si128((__m128i*)(dst + i), _mm512_cvtsepi32_epi8(v32));
+    }
+#elif defined(__AVX2__)
+    for (; i + 8 <= size; i += 8) {
+        __m256 f32 = _mm256_loadu_ps(src + i);
+        __m256i v32 = _mm256_cvtps_epi32(f32);
+        for(size_t j=0; j<8; ++j) {
+            int val = _mm256_extract_epi32(v32, j);
+            dst[i+j] = llaisys::utils::cast<int8_t>(val);
+        }
+    }
+#endif
+    for (; i < size; ++i) {
+        dst[i] = llaisys::utils::cast<int8_t>(src[i]);
+    }
+}
+
 void f8a_to_fp32_batch(float *dst, const f8a_t *src, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         dst[i] = _fp8_e5m2_to_fp32(src[i]);

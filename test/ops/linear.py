@@ -5,11 +5,22 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark
+from test_utils import random_tensor, check_equal, benchmark, random_int_tensor
 
 
 def torch_linear(out, x, w, bias):
-    torch.nn.functional.linear(x, w, bias, out=out)
+    if out.dtype == torch.int8:
+        x_f = x.to(torch.float32)
+        w_f = w.to(torch.float32)
+        b_f = bias.to(torch.float32) if bias is not None else None
+        
+        res = torch.nn.functional.linear(x_f, w_f, b_f)
+        
+        res = res.round().clamp(-128, 127)
+        
+        out.copy_(res.to(torch.int8))
+    else:
+        torch.nn.functional.linear(x, w, bias, out=out)
 
 
 def test_op_linear(
@@ -26,14 +37,26 @@ def test_op_linear(
     print(
         f"   out {out_shape}, x {x_shape}, w {w_shape}, bias {use_bias}, dtype <{dtype_name}>"
     )
-    x, x_ = random_tensor(x_shape, dtype_name, device_name, scale=0.1)
-    w, w_ = random_tensor(w_shape, dtype_name, device_name, scale=0.01)
+    if dtype_name not in ["i8"]:
+        x, x_ = random_tensor(x_shape, dtype_name, device_name, scale=0.1)
+        w, w_ = random_tensor(w_shape, dtype_name, device_name, scale=0.01)
+    else:
+        x, x_ = random_int_tensor(x_shape, device_name, dtype_name,low=-128, high=127)
+        w, w_ = random_int_tensor(w_shape, device_name, dtype_name, low=-128, high=127)
 
     bias, bias_ = None, None
     if use_bias:
-        bias, bias_ = random_tensor((w_shape[0],), dtype_name, device_name)
+        if dtype_name not in ["i8"]:
+            bias, bias_ = random_tensor((w_shape[0],), dtype_name, device_name)
+        else:
+            bias, bias_ = random_int_tensor(
+                (w_shape[0],), device_name, dtype_name, low=-128, high=127
+            )
+    if dtype_name not in ["i8"]:
+        out, out_ = random_tensor(out_shape, dtype_name, device_name)
+    else:
+        out, out_ = random_int_tensor(out_shape, device_name, dtype_name, low=-128, high=127)
 
-    out, out_ = random_tensor(out_shape, dtype_name, device_name)
     torch_linear(out, x, w, bias)
     llaisys.Ops.linear(out_, x_, w_, bias_)
 
@@ -79,6 +102,7 @@ if __name__ == "__main__":
         # ("f32", 5e-5, 5e-5),
         # ("f16", 1e-3, 1e-3),
         ("bf16", 5e-2, 5e-2),
+        ("i8", 0, 0),
     ]
     print(f"Testing Ops.linear on {args.device}")
     for shapes in testShapes:

@@ -280,6 +280,9 @@ void fp32_to_fp16_batch_f16c(fp16_t *dst, const float *src, size_t count);
 void bf16_to_fp32_batch(float *dst, const bf16_t *src, size_t count);
 void fp32_to_bf16_batch(bf16_t *dst, const float *src, size_t count);
 
+void int8_to_fp32_batch(float* dst, const int8_t* src, size_t size);
+void fp32_to_int8_batch(int8_t* dst, const float* src, size_t size);
+
 void f8a_to_fp32_batch(float *dst, const f8a_t *src, size_t count);
 void fp32_to_f8a_batch(f8a_t *dst, const float *src, size_t count);
 

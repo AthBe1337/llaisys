@@ -82,8 +82,64 @@ void linear_(T *out, const T *in, const T *weight, const T *bias,
     }
 }
 
+template <typename T>
+void linear_(T *out, const T *in, const T *weight, const T *bias, 
+             size_t nrow, size_t ncol_out, size_t ncol_in, float scale) {
+    
+    const size_t M = nrow;
+    const size_t N = ncol_out;
+    const size_t K = ncol_in;
+
+    if constexpr (std::is_same_v<T, int8_t>) {
+        std::vector<float> in_fp32(M * K);
+        std::vector<float> weight_fp32(N * K);
+        std::vector<float> out_fp32(M * N, 0.0f);
+
+        llaisys::utils::int8_to_fp32_batch(in_fp32.data(), in, M * K);
+        llaisys::utils::int8_to_fp32_batch(weight_fp32.data(), weight, N * K);
+        
+        if (bias) {
+            std::vector<float> bias_fp32(N);
+            llaisys::utils::int8_to_fp32_batch(bias_fp32.data(), bias, N);
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(out_fp32.data() + i * N, bias_fp32.data(), N * sizeof(float));
+            }
+        }
+
+        if (M == 1) {
+            vecmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), N, K);
+        } else {
+            matmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), M, N, K);
+        }
+
+        size_t total_elements = M * N;
+        size_t j = 0;
+#if defined(__AVX512F__)
+        __m512 v_scale = _mm512_set1_ps(scale);
+        for (; j + 15 < total_elements; j += 16) {
+            __m512 v_out = _mm512_loadu_ps(out_fp32.data() + j);
+            v_out = _mm512_mul_ps(v_out, v_scale);
+            _mm512_storeu_ps(out_fp32.data() + j, v_out);
+        }
+#elif defined(__AVX2__)
+        __m256 v_scale = _mm256_set1_ps(scale);
+        for (; j + 7 < total_elements; j += 8) {
+            __m256 v_out = _mm256_loadu_ps(out_fp32.data() + j);
+            v_out = _mm256_mul_ps(v_out, v_scale);
+            _mm256_storeu_ps(out_fp32.data() + j, v_out);
+        }
+#endif
+        for (; j < total_elements; ++j) {
+            out_fp32[j] *= scale;
+        }
+
+        llaisys::utils::fp32_to_int8_batch(out, out_fp32.data(), M * N);
+    }
+
+}
+
 namespace llaisys::ops::cpu {
-void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in) {
+void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in, float scale) {
     switch (type) {
     case LLAISYS_DTYPE_F32:
         return linear_(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(in), reinterpret_cast<const float *>(weight), reinterpret_cast<const float *>(bias), nrow, ncol_out, ncol_in);
@@ -93,6 +149,9 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
     case LLAISYS_DTYPE_F16:
         return linear_(reinterpret_cast<llaisys::fp16_t *>(out), reinterpret_cast<const llaisys::fp16_t *>(in),
                        reinterpret_cast<const llaisys::fp16_t *>(weight), reinterpret_cast<const llaisys::fp16_t *>(bias), nrow, ncol_out, ncol_in);
+    case LLAISYS_DTYPE_I8:
+        return linear_(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(in),
+                       reinterpret_cast<const int8_t *>(weight), reinterpret_cast<const int8_t *>(bias), nrow, ncol_out, ncol_in, scale);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
