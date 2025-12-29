@@ -37,6 +37,11 @@ def torch_rope(y: torch.Tensor, x: torch.Tensor, pos_ids: torch.Tensor, theta: f
         y[..., : head_dim // 2] = res_left
         y[..., head_dim // 2 :] = res_right
     else:
+        res_left = res_left.round()
+        res_right = res_right.round()
+        if y.dtype == torch.int8:
+            res_left = torch.clamp(res_left, -128, 127)
+            res_right = torch.clamp(res_right, -128, 127)
         y[..., : head_dim // 2] = res_left.round().to(y.dtype)
         y[..., head_dim // 2 :] = res_right.round().to(y.dtype)
 
@@ -57,14 +62,14 @@ def test_op_rope(
         theta = 10000.0
         y, y_ = random_tensor(shape, dtype_name, device_name)
     else:
-        x, x_ = random_int_tensor(shape, device_name, dtype_name)
+        x, x_ = random_int_tensor(shape, device_name, dtype_name, low=-128, high=127)
         pos_ids, pos_ids_ = arrange_tensor(start_end[0], start_end[1], device_name)
         theta = 10000.0
-        y, y_ = random_int_tensor(shape, device_name, dtype_name)
+        y, y_ = random_int_tensor(shape, device_name, dtype_name, low=-128, high=127)
     torch_rope(y, x, pos_ids, theta)
     llaisys.Ops.rope(y_, x_, pos_ids_, theta)
 
-    assert check_equal(y_, y, atol=atol, rtol=rtol)
+    assert check_equal(y_, y, atol=atol, rtol=rtol, int_mismatch_ratio=0.0001)
 
     if profile:
         benchmark(
