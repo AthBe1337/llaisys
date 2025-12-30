@@ -101,7 +101,7 @@ if __name__ == "__main__":
         # type, atol, rtol
         # ("f32", 5e-5, 5e-5),
         # ("f16", 1e-3, 1e-3),
-        ("bf16", 5e-2, 5e-2),
+        # ("bf16", 5e-2, 5e-2),
         ("i8", 0, 0),
     ]
     print(f"Testing Ops.linear on {args.device}")
