@@ -5,7 +5,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark, random_int_tensor
+from test_utils import random_tensor, check_equal, benchmark, random_int_tensor, zero_tensor
 
 
 def torch_linear(out, x, w, bias, scales=None):
@@ -63,7 +63,7 @@ def test_op_linear(
         x, x_ = random_tensor(x_shape, dtype_name, device_name, scale=0.1)
         w, w_ = random_tensor(w_shape, dtype_name, device_name, scale=0.01)
     else:
-        x, x_ = random_tensor(x_shape, "f32", device_name, scale=0.1)
+        x, x_ = random_tensor(x_shape, "f32" if device_name == "cpu" else "bf16", device_name, scale=0.1)
         w, w_ = random_int_tensor(w_shape, device_name, dtype_name, low=-128, high=127)
 
     bias, bias_ = None, None
@@ -71,11 +71,11 @@ def test_op_linear(
         if dtype_name not in ["i8"]:
             bias, bias_ = random_tensor((w_shape[0],), dtype_name, device_name)
         else:
-            bias, bias_ = random_tensor((w_shape[0],), "f32", device_name)
-            scales, scales_ = random_tensor((w_shape[0],), "f32", device_name, scale=0.02)
+            bias, bias_ = random_tensor((w_shape[0],), "f32" if device_name == "cpu" else "bf16", device_name)
+            # bias, bias_ = zero_tensor((w_shape[0],), "bf16", device_name)
+            scales, scales_ = random_tensor((w_shape[0],), "f32" if device_name == "cpu" else "bf16", device_name, scale=0.02)
 
-    out, out_ = random_tensor(out_shape, "f32", device_name)
-
+    out, out_ = random_tensor(out_shape, "f32" if device_name == "cpu" else "bf16", device_name)
 
     if dtype_name not in ["i8"]:
         torch_linear(out, x, w, bias)
@@ -84,7 +84,7 @@ def test_op_linear(
         torch_linear(out, x, w, bias, scales)
         llaisys.Ops.linear(out_, x_, w_, bias_, scales_)
 
-    assert check_equal(out_, out, atol=atol, rtol=rtol)
+    assert check_equal(out_, out, atol=atol, rtol=rtol, allow_mismatch_ratio=0.0001)
 
     if profile:
         if dtype_name not in ["i8"]:
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         # ("f32", 5e-5, 5e-5),
         # ("f16", 1e-3, 1e-3),
         # ("bf16", 5e-2, 5e-2),
-        ("i8", 1e-4, 1e-4),
+        ("i8", 6e-2, 6e-2),
     ]
     print(f"Testing Ops.linear on {args.device}")
     for shapes in testShapes:

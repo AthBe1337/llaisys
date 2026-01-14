@@ -69,7 +69,7 @@ def test_op_rope(
     torch_rope(y, x, pos_ids, theta)
     llaisys.Ops.rope(y_, x_, pos_ids_, theta)
 
-    assert check_equal(y_, y, atol=atol, rtol=rtol, int_mismatch_ratio=0.0001)
+    assert check_equal(y_, y, atol=atol, rtol=rtol, allow_mismatch_ratio=0.0001)
 
     if profile:
         benchmark(

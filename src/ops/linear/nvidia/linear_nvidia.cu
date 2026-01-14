@@ -3,6 +3,7 @@
 #include "linear_bf16_kernel.cuh"
 #include "linear_fp16_kernel.cuh"
 #include "linear_fp32_kernel.cuh"
+#include "linear_int8_kernel.cuh"
 #include "linear_nvidia.cuh"
 #include "llaisys.h"
 #include "matvec.cuh"
@@ -116,7 +117,7 @@ void launch_linear_bf16_kernel_autotuned(
     }
 }
 
-void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in) {
+void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in, const std::byte *scale) {
     const size_t M = nrow;
     const size_t N = ncol_out;
     const size_t K = ncol_in;
@@ -159,6 +160,39 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             return matvec_kernel_warp_vec<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const cuda_bfloat16 *>(bias), N, K);
         } else {
             launch_linear_bf16_kernel_autotuned(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const cuda_bfloat16 *>(bias), M, N, K);
+        }
+        break;
+    case LLAISYS_DTYPE_I8:
+        if (likely(M == 1)) {
+            dim3 gridDim(N);
+            return matvec_kernel_warp_vec<cuda_bfloat16, int8_t><<<gridDim, blockDim>>>(
+                    (cuda_bfloat16*)out, (const cuda_bfloat16*)in, 
+                    (const int8_t*)weight, (const cuda_bfloat16*)bias, 
+                    N, K, (const cuda_bfloat16*)scale
+                 );
+        } else {
+            constexpr size_t BM = 128;
+            constexpr size_t BN = 256;
+            constexpr size_t BK = 32;
+            constexpr size_t PAD = 8;
+
+            constexpr size_t smem_size = 2 * (BM + BN) * (BK + PAD) * sizeof(cuda_bfloat16) + 
+                                         8 * 16 * 16 * sizeof(float) + 
+                                         8 * 16 * 16 * sizeof(cuda_bfloat16);
+                                         
+            cudaFuncSetAttribute(linear_w8a16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+
+            dim3 gridDim;
+            gridDim.y = div_ceil(M, BM);
+            gridDim.x = div_ceil(N, BN);
+            
+            return linear_w8a16_kernel<<<gridDim, blockDim, smem_size>>>(
+                reinterpret_cast<cuda_bfloat16 *>(out),
+                reinterpret_cast<const cuda_bfloat16 *>(in),
+                reinterpret_cast<const int8_t *>(weight),
+                reinterpret_cast<const cuda_bfloat16 *>(bias),
+                reinterpret_cast<const cuda_bfloat16 *>(scale),   // Per-channel scale
+                M, N, K);
         }
         break;
     default:

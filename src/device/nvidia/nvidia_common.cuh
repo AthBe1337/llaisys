@@ -169,3 +169,43 @@ __device__ __forceinline__ float vec128_dot<cuda_bfloat16>(const cuda_bfloat16 *
     }
     return sum;
 }
+
+template <typename T, typename WType>
+__forceinline__ __device__ float dot_packed_128b(const WType* w_ptr, const T* a_ptr, float scale);
+
+template <>
+__forceinline__ __device__ float dot_packed_128b<cuda_bfloat16, int8_t>(const int8_t* w_ptr, const cuda_bfloat16* a_ptr, float scale) {
+    // 1. Load 16 bytes (128-bit) of data
+    //    - Int8: load 16 weights (int4 × 4 or char16)
+    //    - BF16: load 8 inputs (float4)
+    // Note: stride sizes do not match here!
+    // Standard packed_traits typically align to 128 bits.
+    // For BF16, 128 bits hold 8 elements.
+    // For Int8, 128 bits hold 16 elements.
+    
+    // To reuse the existing loop structure (iterate by input PackedSize), process 8 elements per step.
+    // Input (BF16): 8 elements = 16 bytes (float4)
+    // Weight (Int8): 8 elements = 8 bytes (int2)
+    
+    // Load input (8 × BF16)
+    float4 a_vec = *reinterpret_cast<const float4*>(a_ptr); // 128-bit load
+    // Load weights (8 × Int8)
+    int2 w_vec = *reinterpret_cast<const int2*>(w_ptr);     // 64-bit load
+
+    // Unpack and compute
+    // Treat int2 as 8 int8 values
+    const int8_t* w_i8 = reinterpret_cast<const int8_t*>(&w_vec);
+    
+    // Treat float4 as 8 BF16 values
+    const cuda_bfloat16* a_bf16 = reinterpret_cast<const cuda_bfloat16*>(&a_vec);
+
+    float partial_sum = 0.0f;
+    
+    #pragma unroll
+    for (int i = 0; i < 8; ++i) {
+        float w = static_cast<float>(w_i8[i]) * scale; // Fuse dequantization + scaling
+        float a = __bfloat162float(a_bf16[i]);
+        partial_sum += w * a;
+    }
+    return partial_sum;
+}
