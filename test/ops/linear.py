@@ -75,7 +75,10 @@ def test_op_linear(
             # bias, bias_ = zero_tensor((w_shape[0],), "bf16", device_name)
             scales, scales_ = random_tensor((w_shape[0],), "f32" if device_name == "cpu" else "bf16", device_name, scale=0.02)
 
-    out, out_ = random_tensor(out_shape, "f32" if device_name == "cpu" else "bf16", device_name)
+    if dtype_name not in ["i8"]:
+        out, out_ = random_tensor(out_shape, dtype_name, device_name)
+    else:
+        out, out_ = random_tensor(out_shape, "f32" if device_name == "cpu" else "bf16", device_name)
 
     if dtype_name not in ["i8"]:
         torch_linear(out, x, w, bias)
