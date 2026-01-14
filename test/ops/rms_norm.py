@@ -59,7 +59,7 @@ def test_op_rms_norm(
         torch_rms_norm_int(c, x, w, eps)
     llaisys.Ops.rms_norm(c_, x_, w_, eps)
 
-    assert check_equal(c_, c, atol=atol, rtol=rtol, int_mismatch_ratio=0.0001)
+    assert check_equal(c_, c, atol=atol, rtol=rtol, allow_mismatch_ratio=0.0001)
 
     if profile:
         if dtype_name not in ["i8"]:

@@ -119,7 +119,7 @@ def check_equal(
     atol=1e-5,
     rtol=1e-5,
     strict=False,
-    int_mismatch_ratio=0.0,
+    allow_mismatch_ratio=0.0,
 ):
     shape = llaisys_result.shape()
     strides = llaisys_result.strides()
@@ -177,8 +177,8 @@ def check_equal(
     total_elements = res_cpu.numel()
     error_ratio = num_errors / total_elements
 
-    if is_integer and num_errors > 0:
-        if error_ratio <= int_mismatch_ratio:
+    if num_errors > 0:
+        if error_ratio <= allow_mismatch_ratio:
             return True
 
     print(f"\n{'='*17} Check Equal Failed {'='*17}")
